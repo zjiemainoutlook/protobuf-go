@@ -763,26 +763,17 @@ const (
 func (e encoder) marshalTimestamp(m protoreflect.Message) error {
 	fds := m.Descriptor().Fields()
 	fdSeconds := fds.ByNumber(genid.Timestamp_Seconds_field_number)
-	fdNanos := fds.ByNumber(genid.Timestamp_Nanos_field_number)
 
 	secsVal := m.Get(fdSeconds)
-	nanosVal := m.Get(fdNanos)
 	secs := secsVal.Int()
-	nanos := nanosVal.Int()
 	if secs < minTimestampSeconds || secs > maxTimestampSeconds {
 		return errors.New("%s: seconds out of range %v", genid.Timestamp_message_fullname, secs)
 	}
-	if nanos < 0 || nanos > secondsInNanos {
-		return errors.New("%s: nanos out of range %v", genid.Timestamp_message_fullname, nanos)
-	}
 	// Uses RFC 3339, where generated output will be Z-normalized and uses 0, 3,
 	// 6 or 9 fractional digits.
-	t := time.Unix(secs, nanos).UTC()
-	x := t.Format("2006-01-02T15:04:05.000000000")
-	x = strings.TrimSuffix(x, "000")
-	x = strings.TrimSuffix(x, "000")
-	x = strings.TrimSuffix(x, ".000")
-	e.WriteString(x + "Z")
+	t := time.Unix(secs, 0).UTC()
+	x := t.Format("2006-01-02T15:04:05Z")
+	e.WriteString(x)
 	return nil
 }
 
@@ -796,7 +787,7 @@ func (d decoder) unmarshalTimestamp(m protoreflect.Message) error {
 	}
 
 	s := tok.ParsedString()
-	t, err := time.Parse(time.RFC3339Nano, s)
+	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		return d.newError(tok.Pos(), "invalid %v value %v", genid.Timestamp_message_fullname, tok.RawString())
 	}
@@ -805,19 +796,11 @@ func (d decoder) unmarshalTimestamp(m protoreflect.Message) error {
 	if secs < minTimestampSeconds || secs > maxTimestampSeconds {
 		return d.newError(tok.Pos(), "%v value out of range: %v", genid.Timestamp_message_fullname, tok.RawString())
 	}
-	// Validate subseconds.
-	i := strings.LastIndexByte(s, '.')  // start of subsecond field
-	j := strings.LastIndexAny(s, "Z-+") // start of timezone field
-	if i >= 0 && j >= i && j-i > len(".999999999") {
-		return d.newError(tok.Pos(), "invalid %v value %v", genid.Timestamp_message_fullname, tok.RawString())
-	}
 
 	fds := m.Descriptor().Fields()
 	fdSeconds := fds.ByNumber(genid.Timestamp_Seconds_field_number)
-	fdNanos := fds.ByNumber(genid.Timestamp_Nanos_field_number)
 
 	m.Set(fdSeconds, protoreflect.ValueOfInt64(secs))
-	m.Set(fdNanos, protoreflect.ValueOfInt32(int32(t.Nanosecond())))
 	return nil
 }
 
